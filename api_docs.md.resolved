@@ -1,0 +1,357 @@
+# API Documentation — AD User Creator
+**Base URL (dev):** `http://localhost:8080`  
+**Frontend:** `http://localhost:5173`  
+**Swagger UI (interactive):** `http://localhost:8080/docs`
+
+---
+
+## Route Groups
+
+| Prefix | Description |
+|---|---|
+| `/api/ad` | Active Directory status and config |
+| `/api/users` | Validate, analyze, create users |
+| `/api/ai` | Gemini AI chat |
+
+---
+
+## 1. AD Info Routes
+
+### `GET /api/ad/status`
+Check if AD server is reachable and credentials are valid.
+
+**PowerShell test:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/ad/status" -Method GET
+```
+
+**Expected response (dry run):**
+```json
+{
+  "connected": true,
+  "server": "192.168.1.10",
+  "domain": "company.com",
+  "dry_run": true,
+  "message": "DRY RUN mode — not actually connecting to AD"
+}
+```
+
+---
+
+### `GET /api/ad/ous`
+Fetch list of Organizational Units (mock list in dry run mode).
+
+**PowerShell test:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/ad/ous" -Method GET
+```
+
+**Expected response:**
+```json
+{
+  "ous": [
+    { "name": "IT Department", "dn": "OU=IT,DC=company,DC=com", "description": "IT Staff" },
+    { "name": "HR Department", "dn": "OU=HR,DC=company,DC=com", "description": "Human Resources" },
+    { "name": "Finance",       "dn": "OU=Finance,DC=company,DC=com", "description": "Finance Team" }
+  ],
+  "count": 5
+}
+```
+
+---
+
+### `GET /api/ad/config`
+Returns non-sensitive config info (no passwords exposed).
+
+**PowerShell test:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/ad/config" -Method GET
+```
+
+**Expected response:**
+```json
+{
+  "domain": "company.com",
+  "server": "192.168.1.10",
+  "base_dn": "DC=company,DC=com",
+  "dry_run": true,
+  "use_tls": false,
+  "port": 389,
+  "username_format": "firstname.lastname"
+}
+```
+
+---
+
+## 2. User Routes
+
+### `POST /api/users/validate`
+**Step 1** — Fast code-only validation. No AI, no AD call.  
+Returns errors, warnings, and auto-generated fields.
+
+**PowerShell test (minimal valid):**
+```powershell
+$body = @{
+    first_name = "Jane"
+    last_name  = "Doe"
+    password   = "Welcome@123"
+    ou_path    = "OU=IT,DC=company,DC=com"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/validate" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+**Expected response (valid):**
+```json
+{
+  "is_valid": true,
+  "errors": [],
+  "warnings": [],
+  "auto_generated": {
+    "username": "jane.doe",
+    "display_name": "Jane Doe",
+    "user_principal_name": "jane.doe@company.com"
+  }
+}
+```
+
+**Test: missing password special character:**
+```powershell
+$body = @{
+    first_name = "Jane"
+    last_name  = "Doe"
+    password   = "Welcome123"
+    ou_path    = "OU=IT,DC=company,DC=com"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/validate" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+**Expected (invalid):**
+```json
+{
+  "is_valid": false,
+  "errors": ["Password must contain at least one special character (!@#$%&*...)"],
+  "warnings": [],
+  "auto_generated": { "username": "jane.doe", ... }
+}
+```
+
+---
+
+### `POST /api/users/analyze`
+**Step 2** — After validation passes, get AI-generated (or fallback) summary for confirmation screen.
+
+**PowerShell test:**
+```powershell
+$body = @{
+    first_name  = "Jane"
+    last_name   = "Doe"
+    password    = "Welcome@123"
+    ou_path     = "OU=IT,DC=company,DC=com"
+    email       = "jane.doe@company.com"
+    department  = "Information Technology"
+    job_title   = "Software Engineer"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/analyze" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+**Expected response:**
+```json
+{
+  "validation": { "is_valid": true, "errors": [], "warnings": [...] },
+  "analysis": {
+    "summary": "You are about to create an AD user account for Jane Doe...",
+    "details": ["Username: jane.doe", "UPN: jane.doe@company.com", ...],
+    "warnings": [],
+    "confirmation_prompt": "Do you want to proceed with creating this user?"
+  },
+  "user_data": { "first_name": "Jane", ... }
+}
+```
+> Note: password is NEVER returned in `user_data`.
+
+**Error case (if validation fails):**
+```json
+{
+  "detail": {
+    "message": "Validation failed. Fix errors before analysis.",
+    "errors": ["Password must contain at least one uppercase letter"]
+  }
+}
+```
+
+---
+
+### `POST /api/users/create`
+**Step 3** — Only after human approval. Creates user in AD (or prints in dry run).
+
+**PowerShell test (dry run — safe to run):**
+```powershell
+$body = @{
+    first_name            = "Jane"
+    last_name             = "Doe"
+    password              = "Welcome@123"
+    ou_path               = "OU=IT,DC=company,DC=com"
+    email                 = "jane.doe@company.com"
+    department            = "IT"
+    must_change_password  = $true
+    password_never_expires = $false
+    account_status        = "enabled"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/users/create" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+**Expected response (dry run):**
+```json
+{
+  "success": true,
+  "message": "[DRY RUN] User 'Jane Doe' would be created successfully at CN=Jane Doe,OU=IT,DC=company,DC=com",
+  "user_dn": "CN=Jane Doe,OU=IT,DC=company,DC=com",
+  "username": "jane.doe",
+  "dry_run": true,
+  "details": { "attributes": { "sAMAccountName": "jane.doe", ... } }
+}
+```
+
+---
+
+## 3. AI Chat Routes
+
+### `POST /api/ai/chat`
+Send a message to the Gemini AI assistant.
+
+**PowerShell test:**
+```powershell
+$body = @{
+    messages = @(
+        @{ role = "user"; content = "What is a UPN in Active Directory?" }
+    )
+    current_form_data = $null
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/ai/chat" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+**Expected response:**
+```json
+{
+  "response": "A User Principal Name (UPN) is the username in email format..."
+}
+```
+
+**Multi-turn chat test:**
+```powershell
+$body = @{
+    messages = @(
+        @{ role = "user";      content = "What fields are required?" }
+        @{ role = "assistant"; content = "First name, last name, password and OU path are required." }
+        @{ role = "user";      content = "What is an OU path?" }
+    )
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/ai/chat" `
+  -Method POST -ContentType "application/json" -Body $body
+```
+
+---
+
+### `GET /api/ai/health`
+Check if Gemini AI is configured.
+
+**PowerShell test:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/ai/health" -Method GET
+```
+
+**Expected (key configured):**
+```json
+{
+  "ai_configured": true,
+  "model": "gemini-2.0-flash-lite",
+  "message": "AI ready"
+}
+```
+
+**Expected (no key):**
+```json
+{
+  "ai_configured": false,
+  "model": "gemini-2.0-flash-lite",
+  "message": "No GEMINI_API_KEY set — using fallback mode"
+}
+```
+
+---
+
+### `GET /` — Health check
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/" -Method GET
+```
+```json
+{ "service": "AD User Creator API", "version": "1.0.0", "status": "running", "dry_run": true }
+```
+
+---
+
+## ✅ Quick Test Checklist (Run Top to Bottom)
+
+```powershell
+# 1. Is the server alive?
+Invoke-RestMethod http://localhost:8080/
+
+# 2. Is AD reachable (dry run)?
+Invoke-RestMethod http://localhost:8080/api/ad/status
+
+# 3. Is Gemini configured?
+Invoke-RestMethod http://localhost:8080/api/ai/health
+
+# 4. Get list of OUs (mock in dry run)
+Invoke-RestMethod http://localhost:8080/api/ad/ous
+
+# 5. Full user create flow (dry run - SAFE)
+$user = '{"first_name":"Test","last_name":"User","password":"Test@1234","ou_path":"OU=IT,DC=company,DC=com"}'
+Invoke-RestMethod -Uri http://localhost:8080/api/users/validate -Method POST -ContentType "application/json" -Body $user
+Invoke-RestMethod -Uri http://localhost:8080/api/users/analyze  -Method POST -ContentType "application/json" -Body $user
+Invoke-RestMethod -Uri http://localhost:8080/api/users/create   -Method POST -ContentType "application/json" -Body $user
+```
+
+---
+
+## Request Schema Reference
+
+### [UserCreateRequest](file:///c:/Users/WINDOWS%2010%20PRO/Documents/ActiveDirectory/Backend/user_modules.py#16-75) (used by validate, analyze, create)
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `first_name` | ✅ | string | Letters/spaces/hyphens only |
+| `last_name` | ✅ | string | Letters/spaces/hyphens only |
+| `password` | ✅ | string | Must meet password policy |
+| `ou_path` | ✅ | string | e.g. `OU=IT,DC=company,DC=com` |
+| [username](file:///c:/Users/WINDOWS%2010%20PRO/Documents/ActiveDirectory/Backend/user_modules.py#63-75) | ❌ | string | Auto-generated if omitted |
+| `display_name` | ❌ | string | Auto-generated if omitted |
+| `user_principal_name` | ❌ | string | Auto-generated if omitted |
+| `email` | ❌ | string | Valid email format |
+| `department` | ❌ | string | |
+| `job_title` | ❌ | string | |
+| `phone` | ❌ | string | |
+| `mobile` | ❌ | string | |
+| `company` | ❌ | string | |
+| `employee_id` | ❌ | string | |
+| `manager_dn` | ❌ | string | Full DN of manager |
+| `description` | ❌ | string | |
+| `account_status` | ❌ | `enabled`/`disabled` | Default: `enabled` |
+| `must_change_password` | ❌ | boolean | Default: `true` |
+| `password_never_expires` | ❌ | boolean | Default: `false` |
+
+### Password Policy (from [.env](file:///c:/Users/WINDOWS%2010%20PRO/Documents/ActiveDirectory/Backend/.env))
+- Min 8 characters
+- Requires uppercase, lowercase, number, special character
+- Special characters: `!@#$%^&*(),.?":{}|<>`

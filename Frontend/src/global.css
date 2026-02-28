@@ -1,0 +1,125 @@
+/* global.css — Dark industrial / enterprise aesthetic */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── Core Palette ── */
+  --bg-base:       #0a0c0f;
+  --bg-surface:    #111318;
+  --bg-elevated:   #181c24;
+  --bg-input:      #1c2030;
+  --bg-hover:      #1f2535;
+
+  /* ── Borders ── */
+  --border:        #252a38;
+  --border-focus:  #3d6bc4;
+  --border-error:  #c44b3d;
+  --border-warn:   #c47a1a;
+  --border-success:#1a8c5a;
+
+  /* ── Text ── */
+  --text-primary:   #e8eaf0;
+  --text-secondary: #8b91a8;
+  --text-muted:     #4a5068;
+  --text-accent:    #5b9cf6;
+  --text-error:     #f07070;
+  --text-warn:      #f0a050;
+  --text-success:   #3ecf8e;
+
+  /* ── Accent ── */
+  --accent:         #3d6bc4;
+  --accent-hover:   #4d7ed6;
+  --accent-glow:    rgba(61, 107, 196, 0.2);
+
+  /* ── Danger ── */
+  --danger:         #c44b3d;
+  --danger-hover:   #d45a4c;
+
+  /* ── Fonts ── */
+  --font-sans:  'DM Sans', system-ui, sans-serif;
+  --font-mono:  'IBM Plex Mono', 'Courier New', monospace;
+
+  /* ── Radius ── */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* ── Transitions ── */
+  --t-fast: 120ms ease;
+  --t-med:  220ms ease;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Selection ── */
+::selection { background: var(--accent-glow); color: var(--text-primary); }
+
+/* ── Input Reset ── */
+input, select, textarea {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+select option { background: var(--bg-elevated); }
+
+/* ── Button Reset ── */
+button {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all var(--t-fast);
+}
+
+/* ── Utility ── */
+.mono { font-family: var(--font-mono); }
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.text-accent { color: var(--text-accent); }
+.text-error { color: var(--text-error); }
+.text-success { color: var(--text-success); }
+.text-warn { color: var(--text-warn); }
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.fade-in { animation: fadeIn 0.25s ease forwards; }
